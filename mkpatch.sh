@@ -12,4 +12,4 @@
 commit_id=`git log -1 --pretty=format:"%H" --follow mkpatch.sh`
 
 # Generate the diff
-git diff $commit_id
+git diff $commit_id linux-3.18.77
