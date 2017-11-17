@@ -15,9 +15,10 @@ o The OpenWRT image that we use for our virtual machine is at http://www.cs.roch
 To compile the kernel, cd into the linux-3.18.77 directory.  Use the following
 commands the first time you build the kernel:
 
+o cd linux-3.18.77
 o make mrproper
 
-o cp csc256.config .config
+o cp ../csc256.config .config
 
 o make bzImage
 
