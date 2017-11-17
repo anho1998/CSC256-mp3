@@ -1,7 +1,6 @@
 #!/bin/sh
 
 # Date modified: 10/29/2017 12:48PM -0400
-# Modifying to make the script work.  I think this needs to be the last commit.
 
 #
 # Get ID of the commit that the patch should be based on.
