@@ -1,6 +1,8 @@
 #!/bin/sh
 
+#
 # Date modified: 10/29/2017 12:48PM -0400
+#
 
 #
 # Get ID of the commit that the patch should be based on.
