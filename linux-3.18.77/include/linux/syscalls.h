@@ -70,6 +70,7 @@ union bpf_attr;
 #include <linux/types.h>
 #include <linux/aio_abi.h>
 #include <linux/capability.h>
+#include <linux/event.h>
 #include <linux/signal.h>
 #include <linux/list.h>
 #include <linux/bug.h>
@@ -877,4 +878,9 @@ asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
 asmlinkage long sys_getrandom(char __user *buf, size_t count,
 			      unsigned int flags);
 asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
+
+asmlinkage long sys_doeventopen(void);
+asmlinkage long sys_doeventwait(int eventID);
+asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag);
+
 #endif

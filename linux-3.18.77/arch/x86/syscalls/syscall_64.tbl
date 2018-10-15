@@ -187,9 +187,9 @@
 178	64	query_module
 179	common	quotactl		sys_quotactl
 180	64	nfsservctl
-181	common	getpmsg
+181	common	doeventopen		sys_doeventopen
 182	common	putpmsg
-183	common	afs_syscall
+183	common	doeventwait		sys_doeventwait
 184	common	tuxcall
 185	common	security
 186	common	gettid			sys_gettid
@@ -217,7 +217,7 @@
 208	common	io_getevents		sys_io_getevents
 209	64	io_submit		sys_io_submit
 210	common	io_cancel		sys_io_cancel
-211	64	get_thread_area
+211	64	doeventchmod		sys_doeventchmod
 212	common	lookup_dcookie		sys_lookup_dcookie
 213	common	epoll_create		sys_epoll_create
 214	64	epoll_ctl_old
