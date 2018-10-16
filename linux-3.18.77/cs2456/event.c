@@ -119,6 +119,8 @@ asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
 	pUID = sys_geteuid();
 	pGID = sys_getegid();
 
+	printk("\n\n!!!!!!!!!!!!! pUID: %d, pGID: %d, temp->UID:%d\n\n", pUID, pGID, temp->UID);
+
 	if (!((pUID==0) | (pUID == temp->UID))){
 		mutex_unlock(&event_lock);
 		printk("NO PRIVILEGE\n");

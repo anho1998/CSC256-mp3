@@ -15,7 +15,8 @@ int main (void) {
 	b = syscall (181);
 
 	printf("Rising to user\n");
-
+	
+	printf("euid: %d, egid: %d\n", geteuid(), getegid());
 	printf("a:%d, b:%d\n",a,b);
 	/* Exit the program */
 	return 0;
