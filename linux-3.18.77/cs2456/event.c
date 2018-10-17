@@ -193,7 +193,7 @@ asmlinkage long sys_doeventinfo(int num, int *eventIDs){
     mutex_lock(&event_lock);
     list_for_each(pos, event_list_head){
       my_event = list_entry(pos, struct event, event_list);
-      eventIDs[i++] = my_event->EID;
+      copy_to_user(&(eventIDs[i++]), &(my_event->EID), sizeof(int));
     }
     i = event_count;
     mutex_unlock(&event_lock);
