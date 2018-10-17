@@ -133,6 +133,31 @@ asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
 
 	mutex_unlock(&event_lock);
 
-	return 0;
+	return 1;
 }
 
+asmlinkage long sys_doeventstat(int eventID, uid_t * UID, gid_t * GID, int * UIDFlag, int * GIDFlag)
+{
+	struct event * temp;
+	//int check[4];
+	mutex_lock(&event_lock);
+	temp = get_event(eventID);
+	mutex_unlock(&event_lock);
+
+	if (temp == NULL)
+	{
+		printk("INVALID EVENT ID\n");
+		return -1;
+	}
+	
+	//check [0] = copy_to_user(UID, &(temp->UID), sizeof(uid_t));
+	if ((copy_to_user(UID, &(temp->UID), sizeof(uid_t)) + copy_to_user(GID, &(temp->GID), sizeof(gid_t)) + copy_to_user(UIDFlag, &(temp->user_enable), sizeof(int)) + copy_to_user(GIDFlag, &(temp->group_enable), sizeof(int)))!=0)
+	//if (check[0])
+	{
+		printk("ERROR COPY_TO_USER\n");
+		return -1;
+	}
+
+	return 1;
+
+}	
