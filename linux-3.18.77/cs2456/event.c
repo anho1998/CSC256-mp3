@@ -122,7 +122,7 @@ asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
   if (!((pUID==0) | (pUID == temp->UID))){
     mutex_unlock(&event_lock);
     printk("NO PRIVILEGE\n");
-    return -2;
+    return -1;
   }
 
   // Modify enable bits
@@ -236,11 +236,12 @@ asmlinkage long sys_doeventchown(int eventId, uid_t UID, gid_t GID){
 asmlinkage long sys_doeventstat(int eventID, uid_t *UID, gid_t *GID, int *UIDFlag,
     int *GIDFlag){
   struct event *my_event = get_event(eventID);
+  size_t not_copied = 0;
   if (my_event == NULL)
     return -1;
-  *UID = my_event->UID;
-  *GID = my_event->GID;
-  *UIDFlag = my_event->user_enable;
-  *GIDFlag = my_event->group_enable;
-  return 0;
+  not_copied += copy_to_user(UID, &(my_event->UID), sizeof(uid_t));
+  not_copied += copy_to_user(GID, &(my_event->GID), sizeof(gid_t));
+  not_copied += copy_to_user(UIDFlag, &(my_event->user_enable), sizeof(int));
+  not_copied += copy_to_user(GIDFlag, &(my_event->group_enable), sizeof(int));
+  return not_copied != 0;
 }

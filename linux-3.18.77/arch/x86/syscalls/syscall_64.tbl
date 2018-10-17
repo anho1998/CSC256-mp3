@@ -220,7 +220,7 @@
 211	64	doeventchmod		sys_doeventchmod
 212	common	lookup_dcookie		sys_lookup_dcookie
 213	common	epoll_create		sys_epoll_create
-214	64	epoll_ctl_old
+214	64	doeventstat		sys_doeventstat
 215	64	epoll_wait_old
 216	common	remap_file_pages	sys_remap_file_pages
 217	common	getdents64		sys_getdents64
