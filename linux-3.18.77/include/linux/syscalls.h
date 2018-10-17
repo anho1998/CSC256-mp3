@@ -880,7 +880,11 @@ asmlinkage long sys_getrandom(char __user *buf, size_t count,
 asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
 
 asmlinkage long sys_doeventopen(void);
+asmlinkage long sys_doeventclose(int eventID);
 asmlinkage long sys_doeventwait(int eventID);
+asmlinkage long sys_doeventsig(int eventID);
+asmlinkage long sys_doeventinfo(int num, int *eventIDs);
+asmlinkage long sys_doeventchown(int eventID, uid_t UID, gid_t GID);
 asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag);
 asmlinkage long sys_doeventstat(int eventID, uid_t * UID, gid_t * GID, int * UIDFlag, int * GIDFlag);
 

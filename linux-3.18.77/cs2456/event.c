@@ -65,6 +65,42 @@ asmlinkage long sys_doeventopen(void)
   return new_event->EID;
 }
 
+asmlinkage long sys_doeventclose(int eventID){
+  struct event *my_event;
+  pid_t pUID;
+  gid_t pGID;
+
+  mutex_lock(&event_lock);
+
+  //check existence
+  if ((my_event = get_event(eventID)) == NULL){
+    mutex_unlock(&event_lock);
+    printk("Invalid event ID\n");
+    return -1;
+  }
+
+  // check privelege
+  pUID = sys_geteuid();
+  pGID = sys_getegid();
+
+  if ((pUID != 0) 
+      && (pUID != my_event->UID) 
+      && (my_event->user_enable == 1)){
+    if ((pGID == my_event->GID)
+	&& (my_event->group_enable == 1)){
+      mutex_unlock(&event_lock);
+      printk("NO PRIVILEGE\n");
+      return -1;
+    }
+  }
+
+  my_event->event_sig = 1;
+  wake_up_all(&(my_event->event_queue));
+  list_del(&(my_event->event_list));
+
+  mutex_unlock(&event_lock);
+  return 0;
+}
 asmlinkage long sys_doeventwait(int eventID)
 {
   struct event * temp;
@@ -85,7 +121,9 @@ asmlinkage long sys_doeventwait(int eventID)
   pUID = sys_geteuid();
   pGID = sys_getegid();
 
-  if (!((pUID == 0) | ((pUID == temp->UID) & (temp->user_enable == 1)) | ((pGID == temp->GID) & (temp->group_enable == 1)))){
+  if (!((pUID == 0) || ((pUID == temp->UID) 
+	  && (temp->user_enable == 1)) || ((pGID == temp->GID) 
+	  && (temp->group_enable == 1)))){
     mutex_unlock(&event_lock);
     printk("NO PRIVILEGE\n");
     return -2;
@@ -97,6 +135,114 @@ asmlinkage long sys_doeventwait(int eventID)
   wait_event_interruptible(temp->event_queue, temp->event_sig == 1);
 
   return 1;
+}
+
+// Unblocks all waiting processes; ignored if no processes 
+// are blocked. Return number of processes signaled on 
+// success and -1 on failure.
+asmlinkage long sys_doeventsig(int eventID){
+  struct event *my_event;
+  pid_t pUID;
+  gid_t pGID;
+
+  mutex_lock(&event_lock);
+
+  //check existence
+  if ((my_event = get_event(eventID)) == NULL){
+    mutex_unlock(&event_lock);
+    printk("Invalid event ID\n");
+    return -1;
+  }
+
+  // check privelege
+  pUID = sys_geteuid();
+  pGID = sys_getegid();
+
+  if ((pUID != 0) 
+      && (pUID != my_event->UID) 
+      && (my_event->user_enable == 1)){
+    if ((pGID == my_event->GID)
+	&& (my_event->group_enable == 1)){
+      mutex_unlock(&event_lock);
+      printk("NO PRIVILEGE\n");
+      return -1;
+    }
+  }
+
+  my_event->event_sig = 1;
+  wake_up_all(&(my_event->event_queue));
+
+  mutex_unlock(&event_lock);
+  return 0;
+}
+
+// Fills in the array of integers pointed to by eventIDs 
+// with the current set of active event IDs. num is the 
+// number of integers which the memory pointed to by 
+// eventIDs can hold. eventIDs can be NULL, in which case, 
+// doeventinfo() returns the number of active event IDs. On 
+// success, doeventinfo() returns the number of active 
+// events; otherwise, it returns -1 on failure. If num is 
+// smaller than the number of active event IDs, then -1 
+// should be returned
+//
+// TODO - verify that we return event_count when eventIDs != NULL
+asmlinkage long sys_doeventinfo(int num, int *eventIDs){
+  struct list_head *pos;
+  long i;
+  struct event *my_event;
+  int not_copied;
+  not_copied = 0;
+  i = 0;
+  if (eventIDs == NULL)
+    return event_count;
+  if (num < event_count)
+    return -1;
+  else{
+    mutex_lock(&event_lock);
+    list_for_each(pos, &event_list_head){
+      my_event = list_entry(pos, struct event, event_list);
+      not_copied += copy_to_user(&(eventIDs[i++]), &(my_event->EID), sizeof(int));
+    }
+    i = event_count;
+    mutex_unlock(&event_lock);
+  }
+  if (not_copied > 0)
+    return -1;
+  else
+    return i;
+}
+
+// Change the UID and GID of the event to the specified 
+// values; returns -1 on failure
+asmlinkage long sys_doeventchown(int eventId, uid_t UID, gid_t GID){
+  struct event *my_event;
+  pid_t pUID;
+  gid_t pGID;
+  mutex_lock(&event_lock);
+
+  //check existence
+  if ((my_event = get_event(eventId)) == NULL){
+    mutex_unlock(&event_lock);
+    printk("Invalid event ID\n");
+    return -1;
+  }
+
+  // check privelege
+  pUID = sys_geteuid();
+  pGID = sys_getegid();
+
+  if ((pUID != 0) && (pUID != my_event->UID)){
+    mutex_unlock(&event_lock);
+    printk("NO PRIVILEGE\n");
+    return -2;
+  }
+
+  my_event->UID = UID;
+  my_event->GID = GID;
+
+  mutex_unlock(&event_lock);
+  return 0;
 }
 
 asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
@@ -133,103 +279,7 @@ asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
 
   return 0;
 }
-// Unblocks all waiting processes; ignored if no processes 
-// are blocked. Return number of processes signaled on 
-// success and -1 on failure.
-asmlinkage long sys_doeventsig(int eventID){
-  struct event *my_event;
 
-  mutex_lock(&event_lock);
-
-  //check existence
-  if ((event = get_event(eventID)) == NULL){
-    mutex_unlock(&event_lock);
-    printk("Invalid event ID\n");
-    return -1;
-  }
-
-  // check privelege
-  pUID = sys_geteuid();
-  pGID = sys_getegid();
-
-  if ((pUID != 0) 
-      && (pUID != temp->UID) 
-      && (my_event->user_enable == 1)){
-    if ((pGID == temp->GID)
-	&& (my_event->group_enable == 1)){
-      mutex_unlock(&event_lock);
-      printk("NO PRIVILEGE\n");
-      return -1;
-    }
-  }
-
-  my_event->sig = 1;
-  wake_up_all(temp->event_queue);
-
-  mutex_unlock(&event_lock);
-}
-
-// Fills in the array of integers pointed to by eventIDs 
-// with the current set of active event IDs. num is the 
-// number of integers which the memory pointed to by 
-// eventIDs can hold. eventIDs can be NULL, in which case, 
-// doeventinfo() returns the number of active event IDs. On 
-// success, doeventinfo() returns the number of active 
-// events; otherwise, it returns -1 on failure. If num is 
-// smaller than the number of active event IDs, then -1 
-// should be returned
-//
-// TODO - verify that we return event_count when eventIDs != NULL
-asmlinkage long sys_doeventinfo(int num, int *eventIDs){
-  struct list_head pos;
-  long i;
-  struct event *my_event;
-  i = 0;
-  if (eventIDs == NULL)
-    return event_count;
-  if (num < eventIDs)
-    return -1;
-  else{
-    mutex_lock(&event_lock);
-    list_for_each(pos, event_list_head){
-      my_event = list_entry(pos, struct event, event_list);
-      copy_to_user(&(eventIDs[i++]), &(my_event->EID), sizeof(int));
-    }
-    i = event_count;
-    mutex_unlock(&event_lock);
-  }
-  return i;
-}
-
-// Change the UID and GID of the event to the specified 
-// values; returns -1 on failure
-asmlinkage long sys_doeventchown(int eventId, uid_t UID, gid_t GID){
-  struct event *my_event;
-
-  mutex_lock(&event_lock);
-
-  //check existence
-  if ((event = get_event(eventID)) == NULL){
-    mutex_unlock(&event_lock);
-    printk("Invalid event ID\n");
-    return -1;
-  }
-
-  // check privelege
-  pUID = sys_geteuid();
-  pGID = sys_getegid();
-
-  if ((pUID != 0) && (pUID != temp->UID)){
-    mutex_unlock(&event_lock);
-    printk("NO PRIVILEGE\n");
-    preturn -2;
-  }
-
-  my_event->UID = UID;
-  my_event->GID = GID;
-
-  mutex_unlock(&event_lock);
-}
 // Place the UID, GID, User Signal Enable Bit, and Group 
 // Signal Enable Bit into the memory pointed to by UID, GID, 
 // UIDFlag, and GIDFlag, respectively; returns -1 on failure
@@ -245,3 +295,4 @@ asmlinkage long sys_doeventstat(int eventID, uid_t *UID, gid_t *GID, int *UIDFla
   not_copied += copy_to_user(GIDFlag, &(my_event->group_enable), sizeof(int));
   return not_copied != 0;
 }
+
