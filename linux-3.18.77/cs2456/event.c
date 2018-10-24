@@ -45,8 +45,10 @@ asmlinkage long sys_doeventopen(void)
   new_event = (struct event *)kmalloc(sizeof(struct event), GFP_KERNEL);
 
   // If allocation unsuccessful 
-  if (new_event == NULL)
+  if (new_event == NULL) {
+    printk("null malloc?\n");
     return -1;
+  }
 
   // Initilaize event info
   new_event->EID = EID_next;
