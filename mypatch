@@ -12,30 +12,46 @@ index 6f713033..f15b4caa 100644
  vmlinux-dirs	:= $(patsubst %/,%,$(filter %/, $(init-y) $(init-m) \
  		     $(core-y) $(core-m) $(drivers-y) $(drivers-m) \
 diff --git a/linux-3.18.77/arch/x86/syscalls/syscall_64.tbl b/linux-3.18.77/arch/x86/syscalls/syscall_64.tbl
-index 281150b5..3ffb66a0 100644
+index 281150b5..5d0b6a80 100644
 --- a/linux-3.18.77/arch/x86/syscalls/syscall_64.tbl
 +++ b/linux-3.18.77/arch/x86/syscalls/syscall_64.tbl
-@@ -187,9 +187,9 @@
+@@ -187,11 +187,11 @@
  178	64	query_module
  179	common	quotactl		sys_quotactl
  180	64	nfsservctl
 -181	common	getpmsg
-+181	common	doeventopen		sys_doeventopen
- 182	common	putpmsg
+-182	common	putpmsg
 -183	common	afs_syscall
+-184	common	tuxcall
+-185	common	security
++181	common	doeventopen		sys_doeventopen
++182	common	doeventclose		sys_doeventclose
 +183	common	doeventwait		sys_doeventwait
- 184	common	tuxcall
- 185	common	security
++184	common	doeventsig		sys_doeventsig
++185	common	doeventinfo		sys_doeventinfo
  186	common	gettid			sys_gettid
-@@ -217,7 +217,7 @@
+ 187	common	readahead		sys_readahead
+ 188	common	setxattr		sys_setxattr
+@@ -211,16 +211,16 @@
+ 202	common	futex			sys_futex
+ 203	common	sched_setaffinity	sys_sched_setaffinity
+ 204	common	sched_getaffinity	sys_sched_getaffinity
+-205	64	set_thread_area
++205	common	doeventchown		sys_doeventchown
+ 206	64	io_setup		sys_io_setup
+ 207	common	io_destroy		sys_io_destroy
  208	common	io_getevents		sys_io_getevents
  209	64	io_submit		sys_io_submit
  210	common	io_cancel		sys_io_cancel
 -211	64	get_thread_area
-+211	64	doeventchmod		sys_doeventchmod
++211	common	doeventchmod		sys_doeventchmod
  212	common	lookup_dcookie		sys_lookup_dcookie
  213	common	epoll_create		sys_epoll_create
- 214	64	epoll_ctl_old
+-214	64	epoll_ctl_old
++214	common	doeventstat		sys_doeventstat
+ 215	64	epoll_wait_old
+ 216	common	remap_file_pages	sys_remap_file_pages
+ 217	common	getdents64		sys_getdents64
 diff --git a/linux-3.18.77/cs2456/Makefile b/linux-3.18.77/cs2456/Makefile
 new file mode 100644
 index 00000000..0af6b8af
@@ -49,10 +65,10 @@ index 00000000..0af6b8af
 +#Makefile end
 diff --git a/linux-3.18.77/cs2456/event.c b/linux-3.18.77/cs2456/event.c
 new file mode 100644
-index 00000000..a8055e88
+index 00000000..6545a87d
 --- /dev/null
 +++ b/linux-3.18.77/cs2456/event.c
-@@ -0,0 +1,136 @@
+@@ -0,0 +1,300 @@
 +#include <linux/kernel.h>
 +#include <linux/event.h>
 +#include <linux/syscalls.h>
@@ -70,123 +86,287 @@ index 00000000..a8055e88
 +
 +void __init doevent_init(void)
 +{
-+	// intialization
-+	event_count = 0;
-+	EID_next = 0;	
-+	printk("EVENT INITIALIZATION SUCCEEDED\n");
++  // intialization
++  event_count = 0;
++  EID_next = 0;	
++  printk("EVENT INITIALIZATION SUCCEEDED\n");
 +}
 +
 +// Function return the event from event ID
 +static struct event * get_event(int ID)
 +{
-+	struct event * temp;
-+	list_for_each_entry(temp, &event_list_head, event_list){
-+		if (temp->EID == ID)
-+			return temp;
-+	}
-+	
-+	return NULL;
++  struct event * temp;
++  list_for_each_entry(temp, &event_list_head, event_list){
++    if (temp->EID == ID)
++      return temp;
++  }
++
++  return NULL;
 +}
 +
 +asmlinkage long sys_doeventopen(void)
 +{
-+	struct event * new_event; 
-+	
-+	// Lock 
-+	mutex_lock(&event_lock);
++  struct event * new_event; 
++
++  // Lock 
++  mutex_lock(&event_lock);
 +
 +
-+	// Allocate memory
-+	new_event = (struct event *)kmalloc(sizeof(struct event), GFP_KERNEL);
-+	
-+	// If allocation unsuccessful 
-+	if (new_event == NULL)
-+		return -1;
-+	
-+	// Initilaize event info
-+	new_event->EID = EID_next;
-+	EID_next++;
-+	new_event->UID = sys_geteuid();
-+	new_event->GID = sys_getegid();
-+	new_event->user_enable = 1;
-+	new_event->group_enable = 1;
-+	new_event->event_sig = 1;
-+	init_waitqueue_head(&new_event->event_queue);
-+	INIT_LIST_HEAD(&new_event->event_list);
-+	list_add(&new_event->event_list, &event_list_head);
-+	event_count++;
++  // Allocate memory
++  new_event = (struct event *)kmalloc(sizeof(struct event), GFP_KERNEL);
 +
-+	mutex_unlock(&event_lock);
-+	return new_event->EID;
++  // If allocation unsuccessful 
++  if (new_event == NULL) {
++    printk("null malloc?\n");
++    return -1;
++  }
++
++  // Initilaize event info
++  new_event->EID = EID_next;
++  EID_next++;
++  new_event->UID = sys_geteuid();
++  new_event->GID = sys_getegid();
++  new_event->user_enable = 1;
++  new_event->group_enable = 1;
++  new_event->event_sig = 1;
++  init_waitqueue_head(&new_event->event_queue);
++  INIT_LIST_HEAD(&new_event->event_list);
++  list_add(&new_event->event_list, &event_list_head);
++  event_count++;
++
++  mutex_unlock(&event_lock);
++  return new_event->EID;
 +}
 +
++asmlinkage long sys_doeventclose(int eventID){
++  struct event *my_event;
++  pid_t pUID;
++  gid_t pGID;
++
++  mutex_lock(&event_lock);
++
++  //check existence
++  if ((my_event = get_event(eventID)) == NULL){
++    mutex_unlock(&event_lock);
++    printk("Invalid event ID\n");
++    return -1;
++  }
++
++  // check privelege
++  pUID = sys_geteuid();
++  pGID = sys_getegid();
++
++  if ((pUID != 0) 
++      && (pUID != my_event->UID) 
++      && (my_event->user_enable == 1)){
++    if ((pGID == my_event->GID)
++	&& (my_event->group_enable == 1)){
++      mutex_unlock(&event_lock);
++      printk("NO PRIVILEGE\n");
++      return -1;
++    }
++  }
++
++  my_event->event_sig = 1;
++  wake_up_all(&(my_event->event_queue));
++  list_del(&(my_event->event_list));
++
++  mutex_unlock(&event_lock);
++  return 0;
++}
 +asmlinkage long sys_doeventwait(int eventID)
 +{
-+	struct event * temp;
-+	uid_t pUID;
-+	gid_t pGID;
++  struct event * temp;
++  uid_t pUID;
++  gid_t pGID;
 +
-+	mutex_lock(&event_lock);
++  mutex_lock(&event_lock);
 +
-+	// Check if event ID exist
-+	temp = get_event(eventID);
-+	if (temp == NULL){
-+		mutex_unlock(&event_lock);
-+		printk("INVALID EVENT ID\n");
-+		return -1;
-+	}
-+	
-+	// Check for privilege
-+	pUID = sys_geteuid();
-+	pGID = sys_getegid();
-+	
-+	if (!((pUID == 0) | ((pUID == temp->UID) & (temp->user_enable == 1)) | ((pGID == temp->GID) & (temp->group_enable == 1)))){
-+		mutex_unlock(&event_lock);
-+		printk("NO PRIVILEGE\n");
-+		return -2;
-+	}
-+	
-+	//wait
-+	temp->event_sig = 0;
-+	mutex_unlock(&event_lock);
-+	wait_event_interruptible(temp->event_queue, temp->event_sig == 1);
++  // Check if event ID exist
++  temp = get_event(eventID);
++  if (temp == NULL){
++    mutex_unlock(&event_lock);
++    printk("INVALID EVENT ID\n");
++    return -1;
++  }
 +
-+	return 1;
++  // Check for privilege
++  pUID = sys_geteuid();
++  pGID = sys_getegid();
++
++  if (!((pUID == 0) || ((pUID == temp->UID) 
++	  && (temp->user_enable == 1)) || ((pGID == temp->GID) 
++	  && (temp->group_enable == 1)))){
++    mutex_unlock(&event_lock);
++    printk("NO PRIVILEGE\n");
++    return -2;
++  }
++
++  //wait
++  temp->event_sig = 0;
++  mutex_unlock(&event_lock);
++  wait_event_interruptible(temp->event_queue, temp->event_sig == 1);
++
++  return 1;
++}
++
++// Unblocks all waiting processes; ignored if no processes 
++// are blocked. Return number of processes signaled on 
++// success and -1 on failure.
++asmlinkage long sys_doeventsig(int eventID){
++  struct event *my_event;
++  pid_t pUID;
++  gid_t pGID;
++
++  mutex_lock(&event_lock);
++
++  //check existence
++  if ((my_event = get_event(eventID)) == NULL){
++    mutex_unlock(&event_lock);
++    printk("Invalid event ID\n");
++    return -1;
++  }
++
++  // check privelege
++  pUID = sys_geteuid();
++  pGID = sys_getegid();
++
++  if ((pUID != 0) 
++      && (pUID != my_event->UID) 
++      && (my_event->user_enable == 1)){
++    if ((pGID == my_event->GID)
++	&& (my_event->group_enable == 1)){
++      mutex_unlock(&event_lock);
++      printk("NO PRIVILEGE\n");
++      return -1;
++    }
++  }
++
++  my_event->event_sig = 1;
++  wake_up_all(&(my_event->event_queue));
++
++  mutex_unlock(&event_lock);
++  return 0;
++}
++
++// Fills in the array of integers pointed to by eventIDs 
++// with the current set of active event IDs. num is the 
++// number of integers which the memory pointed to by 
++// eventIDs can hold. eventIDs can be NULL, in which case, 
++// doeventinfo() returns the number of active event IDs. On 
++// success, doeventinfo() returns the number of active 
++// events; otherwise, it returns -1 on failure. If num is 
++// smaller than the number of active event IDs, then -1 
++// should be returned
++//
++// TODO - verify that we return event_count when eventIDs != NULL
++asmlinkage long sys_doeventinfo(int num, int *eventIDs){
++  struct list_head *pos;
++  long i;
++  struct event *my_event;
++  int not_copied;
++  not_copied = 0;
++  i = 0;
++  if (eventIDs == NULL)
++    return event_count;
++  if (num < event_count)
++    return -1;
++  else{
++    mutex_lock(&event_lock);
++    list_for_each(pos, &event_list_head){
++      my_event = list_entry(pos, struct event, event_list);
++      not_copied += copy_to_user(&(eventIDs[i++]), &(my_event->EID), sizeof(int));
++    }
++    i = event_count;
++    mutex_unlock(&event_lock);
++  }
++  if (not_copied > 0)
++    return -1;
++  else
++    return i;
++}
++
++// Change the UID and GID of the event to the specified 
++// values; returns -1 on failure
++asmlinkage long sys_doeventchown(int eventId, uid_t UID, gid_t GID){
++  struct event *my_event;
++  pid_t pUID;
++  gid_t pGID;
++  mutex_lock(&event_lock);
++
++  //check existence
++  if ((my_event = get_event(eventId)) == NULL){
++    mutex_unlock(&event_lock);
++    printk("Invalid event ID\n");
++    return -1;
++  }
++
++  // check privelege
++  pUID = sys_geteuid();
++  pGID = sys_getegid();
++
++  if ((pUID != 0) && (pUID != my_event->UID)){
++    mutex_unlock(&event_lock);
++    printk("NO PRIVILEGE\n");
++    return -2;
++  }
++
++  my_event->UID = UID;
++  my_event->GID = GID;
++
++  mutex_unlock(&event_lock);
++  return 0;
 +}
 +
 +asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
 +{
-+	struct event * temp;
-+	uid_t pUID;
-+	gid_t pGID;
++  struct event * temp;
++  uid_t pUID;
++  gid_t pGID;
 +
-+	mutex_lock(&event_lock);
++  mutex_lock(&event_lock);
 +
-+	// Check if event ID exist
-+	temp = get_event(eventID);
-+	if (temp == NULL){
-+		mutex_unlock(&event_lock);
-+		printk("INVALID EVENT ID\n");
-+		return -1;
-+	}	
++  // Check if event ID exist
++  temp = get_event(eventID);
++  if (temp == NULL){
++    mutex_unlock(&event_lock);
++    printk("INVALID EVENT ID\n");
++    return -1;
++  }	
 +
-+	// Check for privilege
-+	pUID = sys_geteuid();
-+	pGID = sys_getegid();
++  // Check for privilege
++  pUID = sys_geteuid();
++  pGID = sys_getegid();
 +
-+	if (!((pUID==0) | (pUID == temp->UID))){
-+		mutex_unlock(&event_lock);
-+		printk("NO PRIVILEGE\n");
-+		return -2;
-+	}
++  if (!((pUID==0) | (pUID == temp->UID))){
++    mutex_unlock(&event_lock);
++    printk("NO PRIVILEGE\n");
++    return -1;
++  }
 +
-+	// Modify enable bits
-+	temp->user_enable = UIDFlag;
-+	temp->group_enable = GIDFlag;
++  // Modify enable bits
++  temp->user_enable = UIDFlag;
++  temp->group_enable = GIDFlag;
 +
-+	mutex_unlock(&event_lock);
++  mutex_unlock(&event_lock);
 +
-+	return 0;
++  return 0;
++}
++
++// Place the UID, GID, User Signal Enable Bit, and Group 
++// Signal Enable Bit into the memory pointed to by UID, GID, 
++// UIDFlag, and GIDFlag, respectively; returns -1 on failure
++asmlinkage long sys_doeventstat(int eventID, uid_t *UID, gid_t *GID, int *UIDFlag,
++    int *GIDFlag){
++  struct event *my_event = get_event(eventID);
++  size_t not_copied = 0;
++  if (my_event == NULL)
++    return -1;
++  not_copied += copy_to_user(UID, &(my_event->UID), sizeof(uid_t));
++  not_copied += copy_to_user(GID, &(my_event->GID), sizeof(gid_t));
++  not_copied += copy_to_user(UIDFlag, &(my_event->user_enable), sizeof(int));
++  not_copied += copy_to_user(GIDFlag, &(my_event->group_enable), sizeof(int));
++  return not_copied != 0;
 +}
 +
 diff --git a/linux-3.18.77/include/linux/event.h b/linux-3.18.77/include/linux/event.h
@@ -223,7 +403,7 @@ index 00000000..07529450
 +
 +#endif /* EVENT_H_ */
 diff --git a/linux-3.18.77/include/linux/syscalls.h b/linux-3.18.77/include/linux/syscalls.h
-index bda9b813..2deaed05 100644
+index bda9b813..681931a0 100644
 --- a/linux-3.18.77/include/linux/syscalls.h
 +++ b/linux-3.18.77/include/linux/syscalls.h
 @@ -70,6 +70,7 @@ union bpf_attr;
@@ -234,14 +414,19 @@ index bda9b813..2deaed05 100644
  #include <linux/signal.h>
  #include <linux/list.h>
  #include <linux/bug.h>
-@@ -877,4 +878,9 @@ asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
+@@ -877,4 +878,14 @@ asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
  asmlinkage long sys_getrandom(char __user *buf, size_t count,
  			      unsigned int flags);
  asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
 +
 +asmlinkage long sys_doeventopen(void);
++asmlinkage long sys_doeventclose(int eventID);
 +asmlinkage long sys_doeventwait(int eventID);
++asmlinkage long sys_doeventsig(int eventID);
++asmlinkage long sys_doeventinfo(int num, int *eventIDs);
++asmlinkage long sys_doeventchown(int eventID, uid_t UID, gid_t GID);
 +asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag);
++asmlinkage long sys_doeventstat(int eventID, uid_t * UID, gid_t * GID, int * UIDFlag, int * GIDFlag);
 +
  #endif
 diff --git a/linux-3.18.77/init/main.c b/linux-3.18.77/init/main.c
